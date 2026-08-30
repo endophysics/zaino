@@ -25,7 +25,7 @@ pub enum BackendType {
     Direct,
     /// JSON-RPC access (formerly `fetch`).
     ///
-    /// Compatible with Zcashd, Zebra, or another Zaino instance.
+    /// Compatible with Zebra or another Zaino instance.
     #[default]
     #[serde(alias = "fetch")]
     Rpc,
