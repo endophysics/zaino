@@ -20,6 +20,13 @@ pub struct TonicServer {
     pub server_handle: Option<tokio::task::JoinHandle<Result<(), ServerError>>>,
 }
 
+struct TonicServerSpawn {
+    routes: Routes,
+    server_config: GrpcServerConfig,
+    tcp_incoming: TcpIncoming,
+    status_name: &'static str,
+}
+
 impl TonicServer {
     /// Starts the gRPC service.
     ///
@@ -34,12 +41,27 @@ impl TonicServer {
         routes: Routes,
         server_config: GrpcServerConfig,
     ) -> Result<Self, ServerError> {
+        Self::spawn_named(routes, server_config, "gRPC").await
+    }
+
+    /// Starts a named gRPC service for component-specific lifecycle reporting.
+    pub async fn spawn_named(
+        routes: Routes,
+        server_config: GrpcServerConfig,
+        status_name: &'static str,
+    ) -> Result<Self, ServerError> {
         // Bind synchronously so EADDRINUSE / EACCES propagate to the caller
         // instead of being swallowed inside the spawned serve task. See
         // zingolabs/zaino#1081.
         let tcp_incoming = TcpIncoming::bind(server_config.listen_address)
             .map_err(|e| ServerError::ServerConfigError(format!("gRPC bind failed: {e}")))?;
-        Self::spawn_inner(routes, server_config, tcp_incoming).await
+        Self::spawn_inner_named(TonicServerSpawn {
+            routes,
+            server_config,
+            tcp_incoming,
+            status_name,
+        })
+        .await
     }
 
     /// Starts the gRPC service on a pre-bound listener.
@@ -55,6 +77,17 @@ impl TonicServer {
         server_config: GrpcServerConfig,
         listener: std::net::TcpListener,
     ) -> Result<Self, ServerError> {
+        Self::spawn_named_from_listener(routes, server_config, listener, "gRPC").await
+    }
+
+    /// Starts a named gRPC service on a pre-bound listener.
+    #[cfg(feature = "test_dependencies")]
+    pub async fn spawn_named_from_listener(
+        routes: Routes,
+        server_config: GrpcServerConfig,
+        listener: std::net::TcpListener,
+        status_name: &'static str,
+    ) -> Result<Self, ServerError> {
         listener.set_nonblocking(true).map_err(|e| {
             ServerError::ServerConfigError(format!("gRPC listener set_nonblocking failed: {e}"))
         })?;
@@ -62,18 +95,35 @@ impl TonicServer {
             TcpIncoming::from(tokio::net::TcpListener::from_std(listener).map_err(|e| {
                 ServerError::ServerConfigError(format!("gRPC from_std failed: {e}"))
             })?);
-        Self::spawn_inner(routes, server_config, tcp_incoming).await
+        Self::spawn_inner_named(TonicServerSpawn {
+            routes,
+            server_config,
+            tcp_incoming,
+            status_name,
+        })
+        .await
     }
 
+    #[cfg(test)]
     async fn spawn_inner(
         routes: Routes,
         server_config: GrpcServerConfig,
         tcp_incoming: TcpIncoming,
     ) -> Result<Self, ServerError> {
-        let status = NamedAtomicStatus::new("gRPC", StatusType::Spawning);
+        Self::spawn_inner_named(TonicServerSpawn {
+            routes,
+            server_config,
+            tcp_incoming,
+            status_name: "gRPC",
+        })
+        .await
+    }
+
+    async fn spawn_inner_named(spawn: TonicServerSpawn) -> Result<Self, ServerError> {
+        let status = NamedAtomicStatus::new(spawn.status_name, StatusType::Spawning);
 
         let mut server_builder = Server::builder();
-        if let Some(tls_config) = server_config.get_valid_tls().await? {
+        if let Some(tls_config) = spawn.server_config.get_valid_tls().await? {
             // Building the TLS acceptor requires a process-level rustls
             // CryptoProvider (zingolabs/zaino#1360).
             zaino_common::crypto::ensure_default_crypto_provider();
@@ -93,12 +143,12 @@ impl TonicServer {
             }
         };
         let server_future = server_builder
-            .add_routes(routes)
-            .serve_with_incoming_shutdown(tcp_incoming, shutdown_signal);
+            .add_routes(spawn.routes)
+            .serve_with_incoming_shutdown(spawn.tcp_incoming, shutdown_signal);
 
+        status.store(StatusType::Ready);
         let task_status = status.clone();
         let server_handle = tokio::task::spawn(async move {
-            task_status.store(StatusType::Ready);
             server_future.await?;
             task_status.store(StatusType::Offline);
             Ok(())

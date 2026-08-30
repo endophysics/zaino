@@ -123,12 +123,11 @@ impl JsonRpcServer {
 
         let shutdown_signal = shutdown_signal(status.clone());
 
+        status.store(StatusType::Ready);
         let task_status = status.clone();
         let server_task_handle = tokio::task::spawn({
             let server_handle_clone = server_handle.clone();
             async move {
-                task_status.store(StatusType::Ready);
-
                 tokio::select! {
                     _ = shutdown_signal => {
                         let _ = server_handle_clone.stop();
