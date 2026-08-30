@@ -173,6 +173,26 @@ fn describe_metrics() {
         GRPC_ERRORS_TOTAL,
         "Total inbound gRPC errors by method and status code"
     );
+    metrics::describe_gauge!(
+        PRIVACY_WINDOW_REQUEST_COUNT,
+        "Requests in the last completed privacy endpoint window by static method, risk class, and outcome"
+    );
+    metrics::describe_gauge!(
+        PRIVACY_WINDOW_ERROR_COUNT,
+        "Errors in the last completed privacy endpoint window by static method, risk class, and outcome"
+    );
+    metrics::describe_gauge!(
+        PRIVACY_WINDOW_DURATION_SECONDS_SUM,
+        "Sum of observed RPC duration from before authorization through response creation in the last completed privacy endpoint window by static method, risk class, and outcome; server streams measure setup/admission, and capability calls include metadata lookup and document rendering"
+    );
+    metrics::describe_gauge!(
+        PRIVACY_WINDOW_START_SECONDS,
+        "Unix start time of the last completed privacy endpoint window"
+    );
+    metrics::describe_gauge!(
+        PRIVACY_WINDOW_DURATION_SECONDS,
+        "Configured duration of each completed privacy endpoint window"
+    );
 
     // Outbound JSON-RPC
     metrics::describe_counter!(
@@ -210,4 +230,31 @@ fn set_build_info() {
         "version" => env!("CARGO_PKG_VERSION"),
     )
     .set(1.0);
+}
+
+#[cfg(all(test, feature = "prometheus"))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn privacy_duration_sum_when_described_names_the_full_observation_scope() {
+        let recorder = PrometheusBuilder::new().build_recorder();
+        let handle = recorder.handle();
+
+        metrics::with_local_recorder(&recorder, || {
+            describe_metrics();
+            metrics::gauge!(
+                PRIVACY_WINDOW_DURATION_SECONDS_SUM,
+                "endpoint_profile" => "privacy",
+                "method" => "GetLatestBlock",
+                "risk_class" => "common_chain_data",
+                "outcome" => "ok"
+            )
+            .set(0.0);
+        });
+
+        assert!(handle.render().contains(
+            "# HELP zaino_privacy_window_duration_seconds_sum Sum of observed RPC duration from before authorization through response creation in the last completed privacy endpoint window by static method, risk class, and outcome; server streams measure setup/admission, and capability calls include metadata lookup and document rendering"
+        ));
+    }
 }
