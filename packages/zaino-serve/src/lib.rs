@@ -17,4 +17,10 @@ pub mod metric_names {
     pub const GRPC_REQUESTS_TOTAL: &str = "zaino.grpc.requests_total";
     pub const GRPC_REQUEST_DURATION_SECONDS: &str = "zaino.grpc.request_duration_seconds";
     pub const GRPC_ERRORS_TOTAL: &str = "zaino.grpc.errors_total";
+    pub const PRIVACY_WINDOW_REQUEST_COUNT: &str = "zaino.privacy.window.request_count";
+    pub const PRIVACY_WINDOW_ERROR_COUNT: &str = "zaino.privacy.window.error_count";
+    pub const PRIVACY_WINDOW_DURATION_SECONDS_SUM: &str =
+        "zaino.privacy.window.duration_seconds_sum";
+    pub const PRIVACY_WINDOW_START_SECONDS: &str = "zaino.privacy.window.start_seconds";
+    pub const PRIVACY_WINDOW_DURATION_SECONDS: &str = "zaino.privacy.window.duration_seconds";
 }
