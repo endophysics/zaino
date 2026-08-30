@@ -4,10 +4,6 @@ use tokio::time::Instant;
 use tracing::info;
 
 use zaino_rpc::probe_node;
-use zaino_serve::{
-    rpc::grpc_routes,
-    server::{config::GrpcServerConfig, grpc::TonicServer, jsonrpc::JsonRpcServer},
-};
 use zaino_state::{
     IndexerService, LightWalletService, NodeBackedIndexerService, NodeBackedIndexerServiceConfig,
     ZcashIndexer, ZcashService,
@@ -16,14 +12,20 @@ use zaino_status::StatusType;
 
 use crate::{config::ZainodConfig, error::IndexerError};
 
+use lifecycle::{EndpointListeners, EndpointPlan, EndpointServers};
+
+mod lifecycle;
+
+#[cfg(feature = "test_dependencies")]
+/// Feature-gated controls for assembled daemon lifecycle tests.
+pub mod test_support;
+
+#[cfg(all(test, feature = "test_dependencies"))]
+mod tests;
+
 /// Zaino, the Zingo-Indexer.
 pub struct Indexer<Service: ZcashService + LightWalletService> {
-    /// JsonRPC server.
-    ///
-    /// Disabled by default.
-    json_server: Option<JsonRpcServer>,
-    /// GRPC server.
-    server: Option<TonicServer>,
+    servers: EndpointServers,
     /// Chain fetch service state process handler..
     service: Option<IndexerService<Service>>,
 }
@@ -86,7 +88,12 @@ where
         ),
         IndexerError,
     > {
-        Self::launch_inner_impl(service_config, indexer_config, None, None).await
+        Self::launch_inner_impl(
+            service_config,
+            indexer_config,
+            EndpointListeners::production(),
+        )
+        .await
     }
 
     /// Launches the indexer on pre-bound listeners (test-only).
@@ -94,14 +101,17 @@ where
     /// The harness binds `127.0.0.1:0` for the gRPC server (and the JSON-RPC
     /// server when enabled), reads the OS-assigned ports, and hands the open
     /// sockets here — eliminating the pick-a-port / bind-later race that
-    /// otherwise flakes under parallel test execution. `json_listener` must be
-    /// `Some` exactly when `indexer_config.json_server_settings` is `Some`.
+    /// otherwise flakes under parallel test execution. The optional JSON-RPC
+    /// listener corresponds to its optional configuration section. The privacy
+    /// listener and `privacy_grpc_settings` must either both be present or both
+    /// be absent; mismatches are rejected before the indexer service starts.
     #[cfg(feature = "test_dependencies")]
     pub async fn launch_inner_with_listeners(
         service_config: Service::Config,
         indexer_config: ZainodConfig,
         grpc_listener: std::net::TcpListener,
         json_listener: Option<std::net::TcpListener>,
+        privacy_grpc_listener: Option<std::net::TcpListener>,
     ) -> Result<
         (
             tokio::task::JoinHandle<Result<(), IndexerError>>,
@@ -109,11 +119,32 @@ where
         ),
         IndexerError,
     > {
+        match (
+            indexer_config.privacy_grpc_settings.is_some(),
+            privacy_grpc_listener.is_some(),
+        ) {
+            (true, false) => {
+                return Err(IndexerError::ConfigError(
+                    "privacy_grpc_settings requires privacy_grpc_listener in launch_inner_with_listeners."
+                        .to_string(),
+                ));
+            }
+            (false, true) => {
+                return Err(IndexerError::ConfigError(
+                    "privacy_grpc_listener requires privacy_grpc_settings in launch_inner_with_listeners."
+                        .to_string(),
+                ));
+            }
+            (true, true) | (false, false) => {}
+        }
         Self::launch_inner_impl(
             service_config,
             indexer_config,
-            Some(grpc_listener),
-            json_listener,
+            EndpointListeners {
+                grpc_legacy: Some(grpc_listener),
+                grpc_privacy: privacy_grpc_listener,
+                json_rpc: json_listener,
+            },
         )
         .await
     }
@@ -121,8 +152,7 @@ where
     async fn launch_inner_impl(
         service_config: Service::Config,
         indexer_config: ZainodConfig,
-        grpc_listener: Option<std::net::TcpListener>,
-        json_listener: Option<std::net::TcpListener>,
+        listeners: EndpointListeners,
     ) -> Result<
         (
             tokio::task::JoinHandle<Result<(), IndexerError>>,
@@ -130,42 +160,22 @@ where
         ),
         IndexerError,
     > {
+        indexer_config.check_config()?;
+        let endpoint_plan = EndpointPlan::from_config(indexer_config)?;
         let service = IndexerService::<Service>::spawn(service_config).await?;
-        let service_subscriber = service.inner_ref().get_subscriber();
-
-        let json_server = match indexer_config.json_server_settings {
-            Some(json_server_config) => Some(match json_listener {
-                #[cfg(feature = "test_dependencies")]
-                Some(listener) => JsonRpcServer::spawn_from_listener(
-                    service.inner_ref().get_subscriber(),
-                    json_server_config,
-                    listener,
-                )
-                .await
-                .unwrap(),
-                _ => JsonRpcServer::spawn(service.inner_ref().get_subscriber(), json_server_config)
-                    .await
-                    .unwrap(),
-            }),
-            None => None,
-        };
-
-        let routes = grpc_routes(service.inner_ref().get_subscriber());
-        let grpc_config = GrpcServerConfig {
-            listen_address: indexer_config.grpc_settings.listen_address,
-            tls: indexer_config.grpc_settings.tls,
-        };
-        let grpc_server = match grpc_listener {
-            #[cfg(feature = "test_dependencies")]
-            Some(listener) => TonicServer::spawn_from_listener(routes, grpc_config, listener)
-                .await
-                .unwrap(),
-            _ => TonicServer::spawn(routes, grpc_config).await.unwrap(),
+        let subscriber = service.inner_ref().get_subscriber();
+        let service_subscriber = subscriber.inner_clone();
+        let servers = match EndpointServers::spawn(subscriber, endpoint_plan, listeners).await {
+            Ok(servers) => servers,
+            Err(error) => {
+                let mut service = service.inner();
+                service.close();
+                return Err(error);
+            }
         };
 
         let mut indexer = Self {
-            json_server,
-            server: Some(grpc_server),
+            servers,
             service: Some(service),
         };
 
@@ -197,27 +207,16 @@ where
             }
         });
 
-        Ok((serve_task, service_subscriber.inner()))
+        Ok((serve_task, service_subscriber))
     }
 
     /// Checks indexers status and servers internal statuses for either offline of critical error signals.
     fn check_for_critical_errors(&self) -> bool {
         let status = self.status_int();
         if status == 5 || status >= 7 {
-            let service_status = self
-                .service
-                .as_ref()
-                .map(|s| s.inner_ref().status())
-                .unwrap_or(StatusType::Offline);
-            let server_status = self
-                .server
-                .as_ref()
-                .map(|s| s.status())
-                .unwrap_or(StatusType::Offline);
+            self.log_status();
             tracing::error!(
                 combined_status = status,
-                ?service_status,
-                ?server_status,
                 "check_for_critical_errors triggered"
             );
             return true;
@@ -235,15 +234,7 @@ where
 
     /// Sets the servers to close gracefully.
     async fn close(&mut self) {
-        if let Some(mut json_server) = self.json_server.take() {
-            json_server.close().await;
-            json_server.status.store(StatusType::Offline);
-        }
-
-        if let Some(mut server) = self.server.take() {
-            server.close().await;
-            server.status.store(StatusType::Offline);
-        }
+        self.servers.close().await;
 
         if let Some(service) = self.service.take() {
             let mut service = service.inner();
@@ -258,21 +249,7 @@ where
             None => return 7,
         };
 
-        let json_server_status = self
-            .json_server
-            .as_ref()
-            .map(|json_server| json_server.status());
-
-        let mut server_status = match &self.server {
-            Some(server) => server.status(),
-            None => return 7,
-        };
-
-        if let Some(json_status) = json_server_status {
-            server_status = StatusType::combine(server_status, json_status);
-        }
-
-        usize::from(StatusType::combine(service_status, server_status))
+        usize::from(StatusType::combine(service_status, self.servers.status()))
     }
 
     /// Returns the current StatusType of the indexer.
@@ -297,23 +274,8 @@ where
             .map(|service| service.inner_ref().finalised_state_mode().to_string())
             .unwrap_or_else(|| "unknown".to_string());
 
-        let json_server_status = match &self.json_server {
-            Some(json_server) => json_server.status(),
-            None => StatusType::Offline,
-        };
-
-        let grpc_server_status = match &self.server {
-            Some(server) => server.status(),
-            None => StatusType::Offline,
-        };
-
-        info!(
-            chain_state = %service_status,
-            fs_mode = %finalised_state_mode,
-            json_rpc = %json_server_status,
-            grpc = %grpc_server_status,
-            "Zaino status check"
-        );
+        self.servers
+            .log_status(service_status, &finalised_state_mode);
     }
 }
 
