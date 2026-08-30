@@ -95,5 +95,7 @@ zaino-mempool.workspace = true
 
 [dev-dependencies]
 tempfile = { workspace = true }
+tonic.workspace = true
+zaino-proto.workspace = true
 zcash_address = { workspace = true }
 zcash_protocol = { workspace = true }
