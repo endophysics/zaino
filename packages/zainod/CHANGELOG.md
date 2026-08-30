@@ -9,7 +9,27 @@ and this crate adheres to Rust's notion of
 ## [Unreleased]
 
 ### Added
+- Optional `privacy_grpc_settings` on `ZainodConfig` for a separately configured
+  privacy gRPC endpoint. The absent table preserves
+  legacy-only configuration and serialization. Its read flags default to
+  `false`, `metrics_window_seconds` defaults to 60 and accepts
+  `1..=u32::MAX`, and its
+  gRPC address must differ from legacy gRPC and JSON-RPC addresses. TLS paths
+  and public-bind restrictions are validated independently. When configured,
+  the daemon starts a second profile-aware tonic server over a clone of the same
+  subscriber used by legacy gRPC. Startup rolls back already-started servers and
+  the shared indexer service on a later bind failure; readiness, critical-error
+  restart detection, status logs, and graceful shutdown cover both endpoints.
+  The daemon also owns the privacy fixed-window metrics timer: startup rollback
+  closes it, normal shutdown drains tonic first, and the active partial window is
+  discarded after drain.
+- Root `just inspect-zaino-profiles` live inspection starts one validator and one
+  Zaino process with both profiles, then prints labeled evidence for method
+  policy, capability output, logging, completed-window dimensions, and cleanup.
 ### Changed
+- Periodic daemon status fields now name `grpc_legacy` and `grpc_privacy`;
+  omitted privacy is reported as `disabled` and remains neutral in combined
+  readiness.
 ### Deprecated
 ### Removed
 ### Fixed

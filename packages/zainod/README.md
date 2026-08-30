@@ -35,8 +35,83 @@ Configuration is layered, highest priority first:
 2. the TOML config file,
 3. built-in defaults.
 
-Sensitive fields (passwords, secrets, tokens, cookies, private keys) cannot be
-set via environment variables and must come from the config file.
+All supported fields, including sensitive values, follow this precedence.
+Deployments must protect sensitive values according to the permissions and
+configuration of their chosen secret-injection mechanism.
+
+## Optional Privacy gRPC Configuration
+
+`[privacy_grpc_settings]` reserves an optional, separately configured gRPC
+endpoint for the privacy profile. Omitting the table keeps legacy-only behavior
+unchanged. When present, Zaino starts a second profile-aware listener over the
+same indexer service and subscriber source as the legacy endpoint.
+
+```toml
+[grpc_settings]
+listen_address = "127.0.0.1:8137"
+
+[grpc_settings.tls]
+cert_path = "/path/to/legacy-cert.pem"
+key_path = "/path/to/legacy-key.pem"
+
+[privacy_grpc_settings]
+listen_address = "127.0.0.1:9137"
+allow_transaction_specific_reads = false
+allow_transparent_address_reads = false
+metrics_window_seconds = 60
+
+[privacy_grpc_settings.tls]
+cert_path = "/path/to/privacy-cert.pem"
+key_path = "/path/to/privacy-key.pem"
+
+[json_server_settings]
+json_rpc_listen_address = "127.0.0.1:8237"
+```
+
+Both read flags default to `false`; `metrics_window_seconds` defaults to `60`
+and must be in `1..=u32::MAX`. The privacy address must differ from both the
+legacy gRPC and optional JSON-RPC addresses. TLS certificate and key paths are
+validated independently for each configured gRPC endpoint, and a public
+plaintext privacy bind is rejected unless built with
+`no_tls_use_unencrypted_traffic`.
+
+The legacy endpoint enables every `CompactTxStreamer` method. Privacy enables
+common chain reads by default. Its two flags independently enable the
+transaction-specific and transparent-address classes. Those enabled methods
+remain sensitive and gain no anonymity guarantee. Privacy always denies mempool
+methods, transaction submission, and `Ping`. See the exact
+[method matrix](../../docs/rpc_api.md).
+
+Startup is transactional: if either configured gRPC bind fails, Zaino closes
+any endpoint already started and the shared indexer service before returning the
+typed startup error. Readiness, critical-error restart detection, status logs,
+and graceful shutdown include every configured endpoint.
+
+The privacy profile creates no session ID, cookie, `Set-Cookie` metadata, or
+affinity requirement. These are Zaino application properties. Operators must
+independently configure proxies and load balancers not to record client identity
+or add cookies and affinity.
+
+Environment variables override TOML values, including flattened server fields:
+`ZAINO_PRIVACY_GRPC_SETTINGS__LISTEN_ADDRESS`,
+`ZAINO_PRIVACY_GRPC_SETTINGS__ALLOW_TRANSACTION_SPECIFIC_READS`,
+`ZAINO_PRIVACY_GRPC_SETTINGS__ALLOW_TRANSPARENT_ADDRESS_READS`, and
+`ZAINO_PRIVACY_GRPC_SETTINGS__METRICS_WINDOW_SECONDS`.
+
+Run the repository inspection scenario from the workspace root. It requires
+`just`, `cargo-nextest`, built or linked live-test binaries under
+`live-tests/test_binaries/bins`, and the normal clientless validator test
+environment:
+
+```sh
+TEST_BINARIES_DIR="$PWD/live-tests/test_binaries/bins" just inspect-zaino-profiles
+```
+
+It starts one validator and one Zaino process with both endpoints, then prints
+labeled `PROFILE_*` results for common queries, enforced denials, legacy
+submission handling, all 20 capability decisions, profile logging, completed
+window dimensions, and cleanup. A successful run ends with the focused test
+passing and includes `PROFILE_CLEANUP zaino=closed validator=drop_guarded`.
 
 ## Launching
 
