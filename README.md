@@ -107,27 +107,43 @@ LICENSE                            Apache-2.0 license text
 
 ## Server network exposure
 
-Zaino exposes two servers, with different defaults reflecting their transport
-security:
+Zaino can expose three client API listeners, with different defaults reflecting their
+transport security and method policy:
 
-- **gRPC** (`[grpc_settings]`): may bind to a public address only when TLS is
-  configured (`[grpc_settings.tls]` with `cert_path` / `key_path`). Binding to a
+- **Legacy gRPC** (`[grpc_settings]`): required and fully compatible. All 20
+  `CompactTxStreamer` methods are enabled.
+- **Privacy gRPC** (`[privacy_grpc_settings]`): optional. It uses the same
+  indexer and subscriber as legacy gRPC, allows common chain data by default,
+  and denies sensitive reads, mempool access, transaction submission, and debug
+  access. Two independent flags can enable transaction-specific or transparent
+  reads, but those enabled reads remain sensitive and aren't made anonymous.
+- **gRPC transport**, for either profile: may bind to a public address only when
+  TLS is configured in that profile's `tls` table with `cert_path` and
+  `key_path`. Binding to a
   non-private address without TLS is rejected at startup. The
   `no_tls_use_unencrypted_traffic` build feature disables this enforcement (and
-  logs a startup warning) — for testing or trusted networks only.
+  logs a startup warning), for testing or trusted networks only.
 - **JSON-RPC** (`[json_server_settings]`): has **no transport encryption** and
   is intended for loopback or trusted private networks only. By default it may
   bind only to private/loopback addresses (RFC1918, IPv6 ULA, or loopback);
   public or unspecified (`0.0.0.0` / `::`) bind addresses are rejected at
   startup. The `allow_unencrypted_public_json_rpc_bind` build feature lifts this
   restriction (and logs a startup warning) for deployments on trusted private
-  networks where encryption is handled externally (e.g. containers behind a
+  networks where encryption is handled externally (for example, containers behind a
   service mesh or proxy that terminates TLS).
 
 **Security implication:** the JSON-RPC interface transmits unencrypted traffic.
 Do not expose it to untrusted networks, and only enable
 `allow_unencrypted_public_json_rpc_bind` when an external layer secures the
 connection.
+
+Both gRPC profiles expose additive capability discovery. See the
+[RPC API](./docs/rpc_api.md), [`zainod` operator guide](./packages/zainod/usage.md),
+[`zaino-serve` usage guide](./packages/zaino-serve/usage.md), and
+[profile logging contract](./docs/logging.md). Zaino's no-cookie, no-affinity,
+and privacy logging guarantees apply to the application only. Operators must
+configure external proxies and load balancers not to add identity logs, cookies,
+or affinity.
 
 ## Running tests
 
@@ -184,9 +200,18 @@ Records a newcomer needs first:
 - [ADR-0011](./docs/adr/zaino/0011-chain-head-subsystem-separation.md): the non-finalised chain head is a self-synchronising subsystem.
 - [ADR-0012](./docs/adr/zaino/0012-chain-store-subsystem-separation.md): the finalised state is a subsystem behind ports, and its database is one implementation of them.
 
+The privacy profile decisions remain repository-local until they are proposed to
+the shared ADR repository:
+- [Privacy decision 0012](./docs/privacy-profile-decisions/0012-grpc-method-risk-classification.md): every `CompactTxStreamer` method has one privacy risk class.
+- [Privacy decision 0013](./docs/privacy-profile-decisions/0013-privacy-endpoint-defaults.md): the privacy gRPC endpoint is opt-in and fail-closed.
+- [Privacy decision 0014](./docs/privacy-profile-decisions/0014-privacy-observability.md): privacy observability is identity-free and windowed.
+- [Privacy decision 0015](./docs/privacy-profile-decisions/0015-privacy-profile-upstream-seam.md): privacy profiles attach at the serving and daemon seams.
+
 ### Crate usage guides
 Practical guidance for working *in* a crate — its scope, its invariants, and the
 mistakes its design is trying to prevent.
+- [`zainod`](./packages/zainod/usage.md): daemon configuration and transactional legacy/privacy endpoint supervision.
+- [`zaino-proto`](./packages/zaino-proto/usage.md): generated protocols, including additive privacy capability discovery.
 - [`zaino-status`](./packages/zaino-status/usage.md): the status vocabulary, and why it stays vocabulary.
 - [`zaino-component`](./packages/zaino-component/usage.md): the component abstraction, its two independent axes, and the observed/owned line.
 - [`zaino-consensus`](./packages/zaino-consensus/usage.md): the protocol constants, and why they are stated rather than borrowed.
@@ -205,6 +230,7 @@ mistakes its design is trying to prevent.
 - [`zaino-encoding`](./packages/zaino-encoding/usage.md): the versioned record format, and why nested fields must have their version pinned.
 - [`zaino-chain-store`](./packages/zaino-chain-store/usage.md): the finalised state's ports, why the chunk is the block-read primitive, and why a read past the watermark is not a miss.
 - [`zaino-chain-store-zainodb`](./packages/zaino-chain-store-zainodb/usage.md): the LMDB store, its on-disk compatibility contract, and why its checksums are load-bearing.
+- [`zaino-serve`](./packages/zaino-serve/usage.md): gRPC endpoint profiles, fail-closed authorization, and capability discovery.
 
 
 ## Security Vulnerability Disclosure
