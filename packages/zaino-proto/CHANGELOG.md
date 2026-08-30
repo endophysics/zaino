@@ -8,6 +8,13 @@ and this library adheres to Rust's notion of
 ## [Unreleased]
 
 ### Added
+- Additive `zaino.privacy.v1.PrivacyProfileService/GetPrivacyProfile` protocol,
+  typed response, generated client/server module, and deterministic canonical
+  JSON payload. The response carries semantic versions, service and node
+  metadata, endpoint profile, the effective 20-method policy, logging mode,
+  metrics window, write and identity-state booleans, and RFC 3339 validity.
+  `LoggingMode` distinguishes legacy method-level request logging from privacy
+  aggregate-only observation.
 ### Changed
 - The vendored `lightwallet-protocol` subtree is pulled to upstream **v0.5.0**
   (`ac7cee05`) — it had been stuck at v0.4.0 with later releases hand-copied in.

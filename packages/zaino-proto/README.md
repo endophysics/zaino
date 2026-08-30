@@ -51,17 +51,43 @@ zaino-proto
 │       └── service.proto
 ├── proto
 │   ├── compact_formats.proto -> ../lightwallet-protocol/walletrpc/compact_formats.proto
+│   ├── privacy_profile.proto
 │   ├── proposal.proto
 │   └── service.proto -> ../lightwallet-protocol/walletrpc/service.proto
 └── src
     ├── lib.rs
     ├── proto
     │   ├── compact_formats.rs
+    │   ├── privacy_profile.rs
     │   ├── proposal.rs
     │   ├── service.rs
     │   └── utils.rs
     └── proto.rs
 ```
+
+## Privacy profile discovery
+
+`privacy_profile.proto` is an additive Zaino-owned protocol in package
+`zaino.privacy.v1`. `PrivacyProfileService/GetPrivacyProfile` returns typed
+capability and policy versions, service and node metadata, endpoint profile,
+effective policy for all 20 `CompactTxStreamer` methods, logging mode, metrics
+window, write and identity-state booleans, and RFC 3339 validity fields. Its
+`canonical_json` bytes carry the same capability in deterministic capability
+schema version 1 field order, with the additive `read_privacy.method_policy`
+extension.
+Unknown additive JSON fields can be ignored. The service doesn't modify the
+vendored `CompactTxStreamer` package or `LightdInfo`.
+
+The request is empty. The response doesn't carry a session ID, cookie, affinity
+key, persistent client identifier, or request-derived value. A legacy response
+reports write support and method-level logging. A privacy response reports the
+effective read flags, no write support, and aggregate-only logging. Disabled
+capability schema subordinate values are inactive schema-required descriptors,
+not supported features.
+
+Rust clients import generated types from
+`zaino_proto::proto::privacy_profile`. The committed generated file is refreshed
+by `cargo check -p zaino-proto` when `protoc` is available.
 
 Handling maintaining the git subtree history has its own tricks. We recommend developers updating
 zaino proto that they are wary of these shortcomings.
