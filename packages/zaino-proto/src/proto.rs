@@ -8,5 +8,8 @@ pub mod compact_formats;
 pub mod proposal;
 #[allow(clippy::all)]
 #[rustfmt::skip]
+pub mod privacy_profile;
+#[allow(clippy::all)]
+#[rustfmt::skip]
 pub mod service;
 pub mod utils;

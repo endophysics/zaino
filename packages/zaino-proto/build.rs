@@ -6,6 +6,7 @@ use tonic_prost_build::{compile_protos, configure};
 
 const COMPACT_FORMATS_PROTO: &str = "proto/compact_formats.proto";
 const PROPOSAL_PROTO: &str = "proto/proposal.proto";
+const PRIVACY_PROFILE_PROTO: &str = "proto/privacy_profile.proto";
 const SERVICE_PROTO: &str = "proto/service.proto";
 
 fn protoc_available() -> bool {
@@ -46,6 +47,7 @@ fn main() -> io::Result<()> {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-changed={COMPACT_FORMATS_PROTO}");
     println!("cargo:rerun-if-changed={PROPOSAL_PROTO}");
+    println!("cargo:rerun-if-changed={PRIVACY_PROFILE_PROTO}");
     println!("cargo:rerun-if-changed={SERVICE_PROTO}");
 
     // Check and compile proto files if needed
@@ -106,6 +108,10 @@ fn build() -> io::Result<()> {
         )
         .compile_protos(&[SERVICE_PROTO], &["proto/"])?;
 
+    configure()
+        .build_server(true)
+        .compile_protos(&[PRIVACY_PROFILE_PROTO], &["proto/"])?;
+
     // Build the proposal types.
     compile_protos(PROPOSAL_PROTO)?;
 
@@ -121,6 +127,10 @@ fn build() -> io::Result<()> {
     copy_generated(
         &out.join("cash.z.wallet.sdk.rpc.rs"),
         "src/proto/service.rs",
+    )?;
+    copy_generated(
+        &out.join("zaino.privacy.v1.rs"),
+        "src/proto/privacy_profile.rs",
     )?;
 
     Ok(())

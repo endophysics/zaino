@@ -1,0 +1,61 @@
+syntax = "proto3";
+
+package zaino.privacy.v1;
+
+service PrivacyProfileService {
+  rpc GetPrivacyProfile(GetPrivacyProfileRequest) returns (GetPrivacyProfileResponse);
+}
+
+message GetPrivacyProfileRequest {}
+
+enum EndpointProfile {
+  ENDPOINT_PROFILE_UNSPECIFIED = 0;
+  ENDPOINT_PROFILE_LEGACY = 1;
+  ENDPOINT_PROFILE_PRIVACY = 2;
+}
+
+enum MethodRiskClass {
+  METHOD_RISK_CLASS_UNSPECIFIED = 0;
+  METHOD_RISK_CLASS_COMMON_CHAIN_DATA = 1;
+  METHOD_RISK_CLASS_TRANSACTION_SPECIFIC_LOOKUP = 2;
+  METHOD_RISK_CLASS_TRANSPARENT_ADDRESS_LOOKUP = 3;
+  METHOD_RISK_CLASS_MEMPOOL_PERSONALIZATION = 4;
+  METHOD_RISK_CLASS_TRANSACTION_SUBMISSION = 5;
+  METHOD_RISK_CLASS_ADMINISTRATION_DEBUG = 6;
+}
+
+enum LoggingMode {
+  LOGGING_MODE_UNSPECIFIED = 0;
+  LOGGING_MODE_METHOD_LEVEL_REQUEST = 1;
+  LOGGING_MODE_PRIVACY_AGGREGATE_ONLY = 2;
+}
+
+message NodeMetadata {
+  string implementation = 1;
+  string revision = 2;
+}
+
+message MethodPolicy {
+  string name = 1;
+  MethodRiskClass risk_class = 2;
+  bool enabled = 3;
+}
+
+message GetPrivacyProfileResponse {
+  string capability_version = 1;
+  string policy_version = 2;
+  string service_id = 3;
+  string network = 4;
+  NodeMetadata node = 5;
+  EndpointProfile endpoint_profile = 6;
+  repeated MethodPolicy methods = 7;
+  LoggingMode logging_mode = 8;
+  uint32 metric_window_seconds = 9;
+  bool supports_writes = 10;
+  bool persistent_client_identifiers = 11;
+  bool cookies = 12;
+  bool affinity = 13;
+  string valid_from = 14;
+  string valid_until = 15;
+  bytes canonical_json = 16;
+}
