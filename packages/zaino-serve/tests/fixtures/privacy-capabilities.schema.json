@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:zcash:privacy-stack:privacy-capabilities:1",
+  "title": "Zcash Privacy Service Capabilities",
+  "type": "object",
+  "additionalProperties": true,
+  "required": ["capabilities_version", "service_id", "network", "node", "supported_policy_versions", "private_write", "read_privacy", "valid_from", "valid_until"],
+  "properties": {
+    "capabilities_version": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"},
+    "service_id": {"type": "string", "minLength": 1, "maxLength": 128},
+    "network": {"type": "string", "enum": ["mainnet", "testnet", "regtest"]},
+    "node": {"type": "object", "additionalProperties": true, "required": ["implementation", "revision"], "properties": {"implementation": {"type": "string", "enum": ["zakura", "zebra", "development"]}, "revision": {"type": "string", "minLength": 7}}},
+    "supported_policy_versions": {"type": "array", "minItems": 1, "items": {"type": "string", "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)$"}},
+    "private_write": {"type": "object", "additionalProperties": true, "required": ["enabled", "submission_protocols", "release_modes", "maximum_transaction_bytes", "attestation"], "properties": {"enabled": {"type": "boolean"}, "submission_protocols": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}, "release_modes": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}}, "maximum_transaction_bytes": {"type": "integer", "minimum": 1}, "attestation": {"type": "object", "additionalProperties": true, "required": ["supported", "required"], "properties": {"supported": {"type": "boolean"}, "required": {"type": "boolean"}}}}},
+    "read_privacy": {"type": "object", "additionalProperties": true, "required": ["range_bucketing", "canonical_objects", "mempool_epochs", "separate_write_session", "transparent_local_scan"], "properties": {"range_bucketing": {"type": "object", "additionalProperties": true, "required": ["supported", "bucket_sizes"], "properties": {"supported": {"type": "boolean"}, "bucket_sizes": {"type": "array", "minItems": 1, "items": {"type": "integer", "minimum": 1}}}}, "canonical_objects": {"type": "object", "additionalProperties": true, "required": ["supported"], "properties": {"supported": {"type": "boolean"}}}, "mempool_epochs": {"type": "object", "additionalProperties": true, "required": ["supported", "epoch_ms"], "properties": {"supported": {"type": "boolean"}, "epoch_ms": {"type": "integer", "minimum": 1}}}, "separate_write_session": {"type": "boolean"}, "transparent_local_scan": {"type": "boolean"}}},
+    "valid_from": {"type": "string", "format": "date-time"},
+    "valid_until": {"type": "string", "format": "date-time"}
+  }
+}
