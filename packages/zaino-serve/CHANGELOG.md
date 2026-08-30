@@ -8,10 +8,50 @@ and this library adheres to Rust's notion of
 ## [Unreleased]
 
 ### Added
+- `grpc_routes_with_context` for profile-aware capability responses, plus named
+  tonic spawn APIs used to distinguish `grpc_legacy` and `grpc_privacy`
+  lifecycle transitions.
+- Both legacy and profile-aware gRPC route sets now expose the additive
+  `zaino.privacy.v1.PrivacyProfileService/GetPrivacyProfile` capability. Typed
+  fields and deterministic capability schema version 1 JSON are derived from
+  the same immutable method registry and endpoint context used for authorization.
+  Privacy capability logging mode reports aggregate-only observation while
+  legacy remains method-level. Privacy handlers publish bounded, static,
+  completed-window gauges and emit no per-request application event, counter, or
+  histogram. Disabled private-write subordinate
+  values are schema-required inactive descriptors, with the byte descriptor
+  sourced from `zaino_consensus::MAX_BLOCK_BYTES`.
+- An exhaustive six-class registry covers all 20 `CompactTxStreamer` methods.
+  Legacy allows every method. Privacy allows common chain data by default,
+  independently gates transaction-specific and transparent-address reads, and
+  always denies mempool methods, transaction submission, and debug access before
+  consuming request input. Privacy routes create no session ID, cookie, or
+  affinity requirement.
+- Privacy Prometheus export publishes 63 bounded method/outcome tuples for each
+  completed non-overlapping window through
+  `zaino.privacy.window.request_count`,
+  `zaino.privacy.window.error_count`, and
+  `zaino.privacy.window.duration_seconds_sum`. Window metadata uses
+  `zaino.privacy.window.start_seconds` and
+  `zaino.privacy.window.duration_seconds`. Shutdown discards the active partial
+  window.
 ### Changed
+- Privacy capability responses derive `metric_window_seconds` solely from the
+  recorder owned by `PrivacyWindowMetrics`; `EndpointContext` stores that
+  recorder-derived duration, and callers can't supply a separate value. Legacy
+  responses report `0` because they don't run a privacy aggregate window.
 ### Deprecated
 ### Removed
 ### Fixed
+- Capability discovery now fails closed unless validator metadata identifies a
+  supported `zebra`, `zakura`, or `development` node identity. zcashd or MagicBean,
+  unknown, malformed, conflicting, or insufficient metadata returns gRPC
+  `FailedPrecondition` without a capability document. Zebra's version-only
+  `zcashd_build="v6.3.0"` metadata is accepted when paired with explicit
+  `zcashd_subversion="/Zebra:6.3.0/"`, which supplies the canonical revision.
+- Tonic and JSON-RPC startup now publish `Ready` before returning their handles,
+  preventing an immediate transactional rollback from having `Closing`
+  overwritten by a newly scheduled serve task.
 
 ## [0.7.0] - 2026-08-28
 
