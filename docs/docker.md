@@ -16,9 +16,12 @@ For CLI usage details, see the CLI documentation or run `docker run --rm zaino -
 
 The container can be configured via:
 
-1. **Environment variables only** - Suitable for simple deployments, but sensitive fields (passwords, secrets, tokens, cookies, private keys) cannot be set via env vars for security reasons
-2. **Config file + env vars** - Mount a config file for sensitive fields, override others with env vars
-3. **Config file only** - Mount a complete config file
+1. **Environment variables only** - Set all supported fields through `ZAINO_*` variables
+2. **Config file + env vars** - Mount a baseline config file and override any supported fields with environment variables
+3. **Config file only** - Mount a complete config file without environment overrides
+
+All supported fields use the same precedence: environment variables override
+TOML values, which override built-in defaults.
 
 For data persistence, volume mounts are recommended for the database/cache directory.
 
@@ -115,15 +118,12 @@ environment:
 
 ### Sensitive Fields
 
-For security, the following fields **cannot** be set via environment variables and must use a config file:
-
-- `*_password` (e.g., `validator_password`)
-- `*_secret`
-- `*_token`
-- `*_cookie`
-- `*_private_key`
-
-If you attempt to set these via env vars, Zaino will error on startup.
+Sensitive fields, including passwords, secrets, tokens, cookies, and private
+keys, may be supplied through `ZAINO_*` variables like any other supported
+field. For production deployments, prefer runtime or orchestrator secret
+facilities and avoid committing sensitive values directly in Compose files.
+Environment variables and mounted config files can both expose values; their
+security depends on platform permissions and configuration.
 
 ## Health Check
 
