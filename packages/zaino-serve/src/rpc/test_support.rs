@@ -18,8 +18,9 @@ use zaino_proto::proto::{
     },
 };
 use zaino_state::{
-    AddressStream, CompactBlockStream, CompactTransactionStream, LightWalletIndexer, MempoolInfo,
-    NodeBackedIndexerServiceError, RawTransactionStream, UtxoReplyStream, ZcashIndexer,
+    AddressStream, CompactBlockStream, CompactTransactionStream, IndexedTipIndexer,
+    LightWalletIndexer, MempoolInfo, NodeBackedIndexerServiceError, RawTransactionStream,
+    UtxoReplyStream, ZcashIndexer,
 };
 use zaino_status::{NamedAtomicStatus, Status, StatusType};
 use zebra_chain::{block::Height, parameters::Network, subtree::NoteCommitmentSubtreeIndex};
@@ -104,6 +105,17 @@ impl TestIndexer {
 impl Status for TestIndexer {
     fn status(&self) -> StatusType {
         self.status.load()
+    }
+}
+
+impl IndexedTipIndexer for TestIndexer {
+    fn subscribe_indexed_tips(&self) -> zaino_state::IndexedTipStream {
+        let tip = zaino_primitives::types::BlockRef {
+            hash: zaino_primitives::types::BlockHash::from([0; 32]),
+            height: zaino_primitives::types::Height::try_from(0)
+                .expect("zero is a valid test height"),
+        };
+        Box::pin(futures::stream::once(async move { tip }))
     }
 }
 

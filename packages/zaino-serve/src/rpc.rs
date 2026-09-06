@@ -2,13 +2,16 @@
 
 use std::sync::Arc;
 
+use tokio::sync::watch;
+use zaino_proto::proto::indexed_tip::indexed_tip_service_server::IndexedTipServiceServer;
 use zaino_proto::proto::privacy_profile::privacy_profile_service_server::PrivacyProfileServiceServer;
 use zaino_proto::proto::service::compact_tx_streamer_server::CompactTxStreamerServer;
-use zaino_state::{IndexerSubscriber, LightWalletIndexer, ZcashIndexer};
+use zaino_state::{IndexedTipIndexer, IndexerSubscriber, LightWalletIndexer, ZcashIndexer};
 
 use profile::{CapabilityService, EndpointContext};
 
 pub mod grpc;
+mod indexed_tip;
 pub mod jsonrpc;
 pub mod profile;
 
@@ -18,6 +21,8 @@ pub mod test_support;
 
 #[cfg(test)]
 mod tests;
+
+use indexed_tip::IndexedTipService;
 
 #[derive(Clone)]
 /// Zaino gRPC service.
@@ -62,6 +67,18 @@ pub fn grpc_routes<Indexer: ZcashIndexer + LightWalletIndexer>(
     service_subscriber: IndexerSubscriber<Indexer>,
 ) -> tonic::service::Routes {
     grpc_routes_with_context(service_subscriber, EndpointContext::legacy())
+}
+
+/// Builds the legacy/operator routes, including Zaino's indexed-tip extension.
+pub fn legacy_grpc_routes<Indexer>(
+    service_subscriber: IndexerSubscriber<Indexer>,
+    shutdown: watch::Receiver<()>,
+) -> tonic::service::Routes
+where
+    Indexer: ZcashIndexer + LightWalletIndexer + IndexedTipIndexer + Clone,
+{
+    let indexed_tip_service = IndexedTipService::new(service_subscriber.inner_clone(), shutdown);
+    grpc_routes(service_subscriber).add_service(IndexedTipServiceServer::new(indexed_tip_service))
 }
 
 /// Builds `CompactTxStreamer` routes with an immutable endpoint policy.

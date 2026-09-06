@@ -7,6 +7,7 @@ use std::{
 use futures::Stream;
 use tonic::Code;
 use zaino_proto::proto::{
+    indexed_tip::SubscribeIndexedTipsRequest,
     privacy_profile::{EndpointProfile, GetPrivacyProfileRequest},
     service::{
         Address, AddressList, ChainSpec, Duration, Empty, GetMempoolTxRequest, RawTransaction,
@@ -44,6 +45,32 @@ async fn both_profiles_when_served_over_tcp_retain_capability_common_rpc_and_met
         assert_no_application_metadata(response.metadata());
     }
 
+    fixture.close().await;
+}
+
+#[tokio::test]
+async fn indexed_tip_extension_when_served_is_legacy_only() {
+    let fixture = TransportFixture::launch(PrivacyMethodPolicy::default()).await;
+
+    let mut legacy = TransportFixture::indexed_tip_client(fixture.legacy_address).await;
+    let mut stream = legacy
+        .subscribe_indexed_tips(SubscribeIndexedTipsRequest {})
+        .await
+        .expect("legacy listener must expose indexed tips")
+        .into_inner();
+    let initial = stream
+        .message()
+        .await
+        .expect("initial tip must decode")
+        .expect("initial tip must be present");
+    let privacy = TransportFixture::indexed_tip_client(fixture.privacy_address)
+        .await
+        .subscribe_indexed_tips(SubscribeIndexedTipsRequest {})
+        .await
+        .expect_err("privacy listener must not expose indexed tips");
+
+    assert_eq!((initial.height, initial.hash), (0, vec![0; 32]));
+    assert_eq!(privacy.code(), Code::Unimplemented);
     fixture.close().await;
 }
 

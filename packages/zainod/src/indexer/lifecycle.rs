@@ -3,7 +3,7 @@ use std::{net::TcpListener, time::Duration};
 use tracing::info;
 use zaino_serve::{
     rpc::{
-        grpc_routes, grpc_routes_with_context,
+        grpc_routes_with_context, legacy_grpc_routes,
         profile::{EndpointContext, PrivacyMethodPolicy, PrivacyWindowMetrics},
     },
     server::{
@@ -12,7 +12,7 @@ use zaino_serve::{
         jsonrpc::JsonRpcServer,
     },
 };
-use zaino_state::{IndexerSubscriber, LightWalletIndexer, ZcashIndexer};
+use zaino_state::{IndexedTipIndexer, IndexerSubscriber, LightWalletIndexer, ZcashIndexer};
 use zaino_status::StatusType;
 
 use crate::{config::ZainodConfig, error::IndexerError};
@@ -91,7 +91,7 @@ impl EndpointServers {
         listeners: EndpointListeners,
     ) -> Result<Self, IndexerError>
     where
-        Indexer: ZcashIndexer + LightWalletIndexer,
+        Indexer: ZcashIndexer + LightWalletIndexer + IndexedTipIndexer + Clone,
     {
         let mut servers = Self {
             json_rpc: None,
@@ -115,19 +115,25 @@ impl EndpointServers {
             }
         }
 
-        let legacy_routes = grpc_routes(subscriber.clone());
         let legacy_result = match listeners.grpc_legacy {
             #[cfg(feature = "test_dependencies")]
             Some(listener) => {
-                TonicServer::spawn_named_from_listener(
-                    legacy_routes,
+                TonicServer::spawn_named_from_listener_with_routes(
+                    |shutdown| legacy_grpc_routes(subscriber.clone(), shutdown),
                     plan.grpc_legacy,
                     listener,
                     "grpc_legacy",
                 )
                 .await
             }
-            _ => TonicServer::spawn_named(legacy_routes, plan.grpc_legacy, "grpc_legacy").await,
+            _ => {
+                TonicServer::spawn_named_with_routes(
+                    |shutdown| legacy_grpc_routes(subscriber.clone(), shutdown),
+                    plan.grpc_legacy,
+                    "grpc_legacy",
+                )
+                .await
+            }
         };
         match legacy_result {
             Ok(server) => servers.grpc_legacy = Some(server),

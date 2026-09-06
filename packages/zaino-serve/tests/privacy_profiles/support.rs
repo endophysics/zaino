@@ -6,12 +6,13 @@ use std::{
 
 use tonic::metadata::{KeyAndValueRef, MetadataMap};
 use zaino_proto::proto::{
+    indexed_tip::indexed_tip_service_client::IndexedTipServiceClient,
     privacy_profile::privacy_profile_service_client::PrivacyProfileServiceClient,
     service::compact_tx_streamer_client::CompactTxStreamerClient,
 };
 use zaino_serve::{
     rpc::{
-        grpc_routes, grpc_routes_with_context,
+        grpc_routes_with_context, legacy_grpc_routes,
         profile::{EndpointContext, PrivacyMethodPolicy, PrivacyWindowMetrics},
         test_support::TestIndexer,
     },
@@ -37,8 +38,8 @@ impl TransportFixture {
         let privacy_metrics = PrivacyWindowMetrics::new(Duration::from_secs(60))
             .expect("privacy metric owner must start");
         let privacy_context = EndpointContext::privacy(policy, privacy_metrics.recorder());
-        let legacy = TonicServer::spawn_from_listener(
-            grpc_routes(subscriber.clone()),
+        let legacy = TonicServer::spawn_from_listener_with_routes(
+            |shutdown| legacy_grpc_routes(subscriber.clone(), shutdown),
             config(legacy_address),
             legacy_listener,
         )
@@ -75,6 +76,14 @@ impl TransportFixture {
         PrivacyProfileServiceClient::connect(format!("http://{address}"))
             .await
             .expect("capability client must connect")
+    }
+
+    pub(super) async fn indexed_tip_client(
+        address: SocketAddr,
+    ) -> IndexedTipServiceClient<tonic::transport::Channel> {
+        IndexedTipServiceClient::connect(format!("http://{address}"))
+            .await
+            .expect("indexed-tip client must connect")
     }
 
     pub(super) fn accesses(&self) -> usize {
